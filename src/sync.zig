@@ -239,6 +239,7 @@ fn addAccount(name: [:0]const u8, parent: [:0]const u8) void {
     acct_list.append(&account);
     slurm.db.account.add(rt.db_conn, acct_list) catch {
         log.err("Failed to add Account: {s}", .{name});
+        return;
     };
 
     var assoc: Association = .{
@@ -325,6 +326,7 @@ fn addUser(user: *passwd.User) void {
     user_list.append(&slurm_user);
     slurm.db.user.add(rt.db_conn, user_list) catch {
         log.err("slurm.db.user.add() failed for User {s}", .{user.name});
+        return;
     };
     addUserAssociation(user);
 }
