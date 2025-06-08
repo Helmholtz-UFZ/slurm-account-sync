@@ -1,0 +1,6 @@
+zig-out
+.zig-cache
+vendor/
+src/**/.zig-cache
+src/**/zig-out
+src/**/vendor

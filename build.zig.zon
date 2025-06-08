@@ -1,0 +1,24 @@
+.{
+    .name = .slurm_account_sync,
+    .version = "0.9.0",
+    .minimum_zig_version = "0.14.0",
+    .fingerprint = 0x675d15839556e624,
+    .paths = .{
+        "README.md",
+        "LICENSE",
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+    .dependencies = .{
+        .slurm = .{
+            .path = "vendor/slurm",
+        },
+        .yazap = .{
+          .path = "vendor/yazap",
+        },
+        .yaml = .{
+            .path = "vendor/yaml",
+        },
+    },
+}
