@@ -103,6 +103,7 @@ fn commitChange() void {
 }
 
 fn createOrganizations() void {
+    log.info("Making sure Orgnanization accounts exist...", .{});
     for (rt.config.organizations) |org| {
         if (findAccount(org) != null) continue;
         addAccount(rt.allocator.dupeZ(u8, org) catch @panic("OOM"), "root");
@@ -110,6 +111,7 @@ fn createOrganizations() void {
 }
 
 fn addOrModifyUsers() void {
+    log.info("Adding new Associations...", .{});
     for (rt.local_users.items) |*local_user| {
         if (local_user.uid < rt.config.uid_range.min or
             local_user.uid >= rt.config.uid_range.max or
@@ -129,9 +131,9 @@ fn modifyUser(local_user: *passwd.User, slurm_user: *User) void {
     const def_acct = slurm.parseCStrZ(slurm_user.default_account);
     if (def_acct == null) return;
 
-    if (!std.mem.eql(u8, local_user.account.?, def_acct.?)) {
+    if (!std.mem.eql(u8, local_user.account, def_acct.?)) {
         // department doesn't match, add new assoc
-        addAccount(local_user.account.?, local_user.parent_account);
+        addAccount(local_user.account, local_user.parent_account);
         addUserAssociation(local_user);
     }
 }
@@ -139,6 +141,7 @@ fn modifyUser(local_user: *passwd.User, slurm_user: *User) void {
 fn deleteEmptyAccounts() void {
     const assocs = loadAssociations() orelse return;
 
+    log.info("Deleting empty accounts...", .{});
     skipOrgDeletion: for (rt.slurm_accounts) |account| {
         const name = slurm.parseCStrZ(account.name);
         if (name == null) {
@@ -179,6 +182,7 @@ fn deleteOldUserAssociations() void {
     var assocs = loadAssociations() orelse return;
     var assoc_iter = assocs.iter();
 
+    log.info("Deleting unused Associations...", .{});
     while (assoc_iter.next()) |assoc| {
         const account = slurm.parseCStrZ(assoc.account);
         const user = slurm.parseCStrZ(assoc.user);
@@ -217,7 +221,7 @@ fn deleteOldUserAssociations() void {
             },
         };
 
-        log.info("Deleting unused Association: User={?s} Account={?s}", .{
+        log.info("  User={?s} Account={?s}", .{
             user,
             account,
         });
@@ -272,7 +276,7 @@ fn deleteAccount(account: [:0]const u8) void {
         return;
     };
 
-    log.info("Deleted account: {s}", .{account});
+    log.info("  {s}", .{account});
     commitChange();
     rt.change_attempted = true;
 }
@@ -309,32 +313,31 @@ fn addAssociation(assoc: *Association) void {
 
     assoc_list.append(assoc);
 
-    const assoc_fmt = "User={?s} Account={?s} Cluster={?s}";
+    const assoc_fmt = "User={?s} Account={?s}";
     const print_args = .{
         if (is_user_assoc) assoc.user else "N/A",
         assoc.account,
-        assoc.cluster,
     };
 
     slurm.db.association.add(rt.db_conn, assoc_list) catch {
         log.err("Failed to add Association" ++ assoc_fmt, print_args);
         return;
     };
-    log.info("Added Association: User={?s} Account={?s} Cluster={?s}", print_args);
+    log.info("  " ++ assoc_fmt, print_args);
 
     commitChange();
     rt.change_attempted = true;
 }
 
 fn addUser(user: *passwd.User) void {
-    addAccount(user.account.?, user.parent_account);
+    addAccount(user.account, user.parent_account);
 
     var user_list: *SlurmList(*User) = .initWithDestroyFunc(null);
     defer user_list.deinit();
 
     var slurm_user: User = .{
         .name = user.name,
-        .default_account = user.account.?,
+        .default_account = user.account,
     };
 
     user_list.append(&slurm_user);
@@ -374,7 +377,7 @@ fn deleteUser(user: [:0]const u8) void {
 fn addUserAssociation(user: *passwd.User) void {
     var assoc: Association = .{
         .user = user.name,
-        .account = user.account.?,
+        .account = user.account,
         .parent_acct = user.parent_account,
     };
     addAssociation(&assoc);

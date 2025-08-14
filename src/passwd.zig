@@ -25,22 +25,70 @@ const gid_t = std.posix.gid_t;
 const Allocator = std.mem.Allocator;
 const log = std.log.scoped(.passwd);
 const mem = std.mem;
+const slurm = @import("slurm");
 pub const Entries = std.ArrayListUnmanaged(User);
 
 var rt: *Runtime = undefined;
-var group_remaps: std.StringHashMapUnmanaged([]const u8) = .empty;
+var group_remaps: GroupRemaps = .{};
+
+const GroupRemapEntry = struct {
+    src: []const u8,
+    dest: []const u8,
+    parent: ?[]const u8 = null,
+
+    pub fn fromString(str: []const u8) GroupRemapEntry {
+        var it = std.mem.splitScalar(u8, str, ':');
+        const src = it.first();
+        const dest = it.next().?;
+        const parent = it.next();
+
+        return .{
+            .src = src,
+            .dest = dest,
+            .parent = parent,
+        };
+    }
+};
+
+const GroupRemaps = struct {
+    primary_only: std.StringHashMapUnmanaged(GroupRemapEntry) = .empty,
+    all: std.StringHashMapUnmanaged(GroupRemapEntry) = .empty,
+    specific_users: std.StringHashMapUnmanaged(GroupRemapEntry) = .empty,
+
+    pub fn fromConfig() !GroupRemaps {
+        var out: GroupRemaps = .{};
+
+        for (rt.config.group_remap.primary_only) |remap| {
+            const entry = GroupRemapEntry.fromString(remap);
+            const res = try out.primary_only.getOrPut(rt.allocator, entry.src);
+            if (!res.found_existing) {
+                res.value_ptr.* = entry;
+            }
+        }
+        for (rt.config.group_remap.all) |remap| {
+            const entry = GroupRemapEntry.fromString(remap);
+            const res = try out.all.getOrPut(rt.allocator, entry.src);
+            if (!res.found_existing) {
+                res.value_ptr.* = entry;
+            }
+        }
+        for (rt.config.group_remap.specific_users) |remap| {
+            const entry = GroupRemapEntry.fromString(remap);
+            const res = try out.specific_users.getOrPut(rt.allocator, entry.src);
+            if (!res.found_existing) {
+                res.value_ptr.* = entry;
+            }
+        }
+
+        return out;
+    }
+};
 
 pub fn getUsers(runtime_data: *Runtime) !Entries {
     rt = runtime_data;
     var entries: Entries = .empty;
 
-    for (rt.config.group_remap) |remap| {
-        var it = std.mem.splitScalar(u8, remap, ':');
-        const res = try group_remaps.getOrPut(rt.allocator, it.first());
-        if (!res.found_existing) {
-            res.value_ptr.* = it.rest();
-        }
-    }
+    group_remaps = try GroupRemaps.fromConfig();
 
     while (getpwent()) |entry| {
         var user = User{
@@ -49,12 +97,12 @@ pub fn getUsers(runtime_data: *Runtime) !Entries {
             .gid = entry.gid,
             .parent_account = "ufz",
         };
-        try user.assignAccount(rt.allocator);
+        try user.assignAccount();
         try entries.append(rt.allocator, user);
     }
     endpwent();
 
-    log.debug("Found {d} Users in local passwd database", .{entries.items.len});
+    log.debug("Found {d} Users with getpwent()", .{entries.items.len});
     return entries;
 }
 
@@ -74,37 +122,65 @@ pub const User = struct {
     name: [:0]const u8,
     uid: uid_t,
     gid: gid_t,
-    account: ?[:0]const u8 = null,
+    account: [:0]const u8 = undefined,
     parent_account: [:0]const u8 = undefined,
 
-    fn checkForiDivAccount(self: *User, allocator: Allocator) !?[:0]const u8 {
+    fn resolveMainAccount(self: *User) !void {
+        const main_group_name = slurm.c.gid_to_string_or_null(self.gid);
+        if (main_group_name) |c_grp| {
+            self.account = std.mem.span(c_grp);
+        } else @panic("Failed to resolve group name");
+    }
+
+    fn processSpecificUserRemaps(self: *User) !bool {
+        if (group_remaps.specific_users.get(self.name)) |remapped_group| {
+            self.account = try rt.allocator.dupeZ(u8, remapped_group.dest);
+            self.parent_account = try rt.allocator.dupeZ(u8, remapped_group.parent.?);
+            return true;
+        } else return false;
+    }
+
+    fn processPrimaryGroupRemaps(self: *User) !void {
+        if (group_remaps.primary_only.get(self.account)) |remapped_group| {
+            self.account = try rt.allocator.dupeZ(u8, remapped_group.dest);
+        }
+    }
+
+    fn processDepthGroupRemaps(self: *User) !void {
         var ngroups: c_int = 0;
         if (getgrouplist(self.name, self.gid, null, &ngroups) < 0) {
-            var group_list = try allocator.alloc(std.c.gid_t, @intCast(ngroups));
+            var group_list = try rt.allocator.alloc(std.c.gid_t, @intCast(ngroups));
 
             const rc = getgrouplist(self.name, self.gid, group_list.ptr, &ngroups);
             std.debug.assert(rc == group_list.len);
 
             for (group_list[0..@intCast(ngroups)]) |gid| {
-                const group_name = gidToString(allocator, gid) orelse continue;
+                // TODO: leaking
+                const c_grp = slurm.c.gid_to_string_or_null(gid) orelse continue;
+                const group_name = std.mem.span(c_grp);
 
-                if (!std.mem.startsWith(u8, group_name, "idiv_")) continue;
+                const maybe_remapped_group = group_remaps.all.get(group_name);
+                const is_div = std.mem.startsWith(u8, group_name, "idiv_");
 
-                self.parent_account = "idiv";
-                if (group_remaps.get(group_name)) |remapped_group| {
-                    return try allocator.dupeZ(u8, remapped_group);
+                if (maybe_remapped_group) |remapped_group| {
+                    // For now, assume only idiv groups are remapped.
+                    self.parent_account = "idiv";
+                    self.account = try rt.allocator.dupeZ(u8, remapped_group.dest);
+                    break;
+                } else if (is_div) {
+                    self.parent_account = "idiv";
+                    self.account = try rt.allocator.dupeZ(u8, group_name);
+                    break;
                 }
-
-                return group_name;
             }
         }
-        return null;
     }
 
-    pub fn assignAccount(self: *User, allocator: Allocator) !void {
-        if (try self.checkForiDivAccount(allocator)) |idiv_group| {
-            self.account = idiv_group;
-        } else self.account = gidToString(allocator, self.gid);
+    pub fn assignAccount(self: *User) !void {
+        try self.resolveMainAccount();
+        if (try self.processSpecificUserRemaps()) return;
+        try self.processDepthGroupRemaps();
+        try self.processPrimaryGroupRemaps();
     }
 };
 

@@ -117,6 +117,8 @@ pub fn main() !void {
         );
     }
 
+    log.info("Running sync for Cluster: {s}", .{rt.cluster});
+
     sync.run(&rt);
     try sendMail();
 }

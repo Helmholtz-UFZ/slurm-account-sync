@@ -27,7 +27,11 @@ const Config = @This();
 cluster: []const u8,
 ignore_users_on_delete: []const []const u8 = &.{},
 organizations: []const []const u8 = &.{},
-group_remap: []const []const u8 = &.{},
+group_remap: struct {
+    primary_only: []const []const u8 = &.{},
+    all: []const []const u8 = &.{},
+    specific_users: []const []const u8 = &.{},
+} = .{},
 uid_range: struct {
     min: uid_t = 1000,
     max: uid_t = 100000,
