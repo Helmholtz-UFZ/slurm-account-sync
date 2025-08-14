@@ -34,7 +34,9 @@ uid_range: struct {
 } = .{},
 limits: ?struct {
     shares: ?u32 = null,
-    grp_tres_run_mins: ?[]const u8 = null,
+    max_submit_jobs: ?u32 = null,
+    grp_tres_run_mins: []const []const u8 = &.{},
+    grp_tres: []const []const u8 = &.{},
 } = .{},
 mail_options: ?struct {
     from: ?[]const u8 = null,

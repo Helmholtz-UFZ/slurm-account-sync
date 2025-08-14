@@ -277,6 +277,18 @@ fn deleteAccount(account: [:0]const u8) void {
     rt.change_attempted = true;
 }
 
+fn tresListToKeyValue(list: []const []const u8) !?[*:0]const u8 {
+    var str: std.ArrayListUnmanaged(u8) = .empty;
+
+    for (list) |item| {
+        // TODO: fetch TRES and convert string tres to its ID
+        try str.appendSlice(rt.allocator, item);
+    }
+
+    const slice = try str.toOwnedSliceSentinel(rt.allocator, 0);
+    return slice.ptr;
+}
+
 fn addAssociation(assoc: *Association) void {
     var assoc_list: *SlurmList(*Association) = .initWithDestroyFunc(null);
     defer assoc_list.deinit();
@@ -289,7 +301,9 @@ fn addAssociation(assoc: *Association) void {
         if (is_user_assoc) {
             assoc.is_def = 1;
             assoc.shares_raw = limits.shares orelse NoValue.u32;
-            // grp_tres_run_mins,
+            assoc.max_submit_jobs = limits.max_submit_jobs orelse NoValue.u32;
+            assoc.grp_tres_run_mins = tresListToKeyValue(limits.grp_tres_run_mins) catch null;
+            assoc.grp_tres = tresListToKeyValue(limits.grp_tres) catch null;
         }
     }
 

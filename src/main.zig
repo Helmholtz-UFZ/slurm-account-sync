@@ -110,6 +110,13 @@ pub fn main() !void {
         log.info("dry-run is enabled - no changes will be committed", .{});
     }
 
+    if (rt.config.limits) |limits| {
+        log.info(
+            "Current Limits:\n{s}",
+            .{std.json.fmt(limits, .{ .whitespace = .indent_4 })},
+        );
+    }
+
     sync.run(&rt);
     try sendMail();
 }
