@@ -103,7 +103,7 @@ fn commitChange() void {
 }
 
 fn createOrganizations() void {
-    log.info("Making sure Orgnanization accounts exist...", .{});
+    log.info("Making sure Organization accounts exist...", .{});
     for (rt.config.organizations) |org| {
         if (findAccount(org) != null) continue;
         addAccount(rt.allocator.dupeZ(u8, org) catch @panic("OOM"), "root");
