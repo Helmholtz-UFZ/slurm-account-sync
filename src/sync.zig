@@ -162,6 +162,7 @@ fn deleteEmptyAccounts() void {
 fn deleteOldUsers() void {
     deleteOldUserAssociations();
 
+    log.info("Deleting non existent Users...", .{});
     skipDeletion: for (rt.slurm_users) |u| {
         const slurm_name = slurm.parseCStrZ(u.name);
         if (slurm_name == null) {
@@ -202,30 +203,24 @@ fn deleteOldUserAssociations() void {
         _ = slurm.db.association.removeRaw(rt.db_conn, &filter);
         const err_context = slurm.err.getErrorBundle();
 
+        const assoc_fmt = "User={?s} Account={?s}";
+        const print_args = .{
+            user,
+            account,
+        };
         checkRpc(err_context.code) catch |err| switch (err) {
             error.JobsRunningOnAssoc => {
-                log.err("Cannot delete Association (User={s}, Account={s}) yet, because it has still Jobs running.", .{
-                    user.?,
-                    account.?,
-                });
+                log.err("Cannot delete Association " ++ assoc_fmt ++ " yet, because it has still Jobs running.", print_args);
                 continue;
             },
             else => {
-                log.err("Failed to delete Association: (User={s}, Account={s})", .{
-                    user.?,
-                    account.?,
-                });
-
+                log.err("Failed to delete Association: " ++ assoc_fmt, print_args);
                 log.err("The error was: {s}", .{err_context.description});
                 continue;
             },
         };
 
-        log.info("  User={?s} Account={?s}", .{
-            user,
-            account,
-        });
-
+        log.info("  " ++ assoc_fmt, print_args);
         commitChange();
         rt.change_attempted = true;
     }
@@ -313,10 +308,11 @@ fn addAssociation(assoc: *Association) void {
 
     assoc_list.append(assoc);
 
-    const assoc_fmt = "User={?s} Account={?s}";
+    const assoc_fmt = "User={?s} Account={?s} ({?s})";
     const print_args = .{
         if (is_user_assoc) assoc.user else "N/A",
         assoc.account,
+        assoc.parent_acct,
     };
 
     slurm.db.association.add(rt.db_conn, assoc_list) catch {
@@ -369,7 +365,7 @@ fn deleteUser(user: [:0]const u8) void {
         return;
     };
 
-    log.info("Deleted user: {s}", .{user});
+    log.info("  {s}", .{user});
     commitChange();
     rt.change_attempted = true;
 }
