@@ -90,6 +90,7 @@ pub fn getUsers(runtime_data: *Runtime) !Entries {
 
     group_remaps = try GroupRemaps.fromConfig();
 
+    log.debug("Searching passwd database with getpwent()...", .{});
     while (getpwent()) |entry| {
         var user = User{
             .name = try rt.allocator.dupeZ(u8, std.mem.span(entry.name.?)),
@@ -102,7 +103,7 @@ pub fn getUsers(runtime_data: *Runtime) !Entries {
     }
     endpwent();
 
-    log.debug("Found {d} Users with getpwent()", .{entries.items.len});
+    log.debug("Found a total of {d} Users", .{entries.items.len});
     return entries;
 }
 

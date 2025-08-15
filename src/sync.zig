@@ -210,7 +210,7 @@ fn deleteOldUserAssociations() void {
         };
         checkRpc(err_context.code) catch |err| switch (err) {
             error.JobsRunningOnAssoc => {
-                log.err("Cannot delete Association " ++ assoc_fmt ++ " yet, because it has still Jobs running.", print_args);
+                log.err(" " ++ assoc_fmt ++ " still has jobs running, trying again later...", print_args);
                 continue;
             },
             else => {
