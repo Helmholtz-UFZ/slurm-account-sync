@@ -95,7 +95,7 @@ pub fn getUsers(runtime_data: *Runtime) !Entries {
             .name = try rt.allocator.dupeZ(u8, std.mem.span(entry.name.?)),
             .uid = entry.uid,
             .gid = entry.gid,
-            .parent_account = "ufz",
+            .parent_account = try rt.allocator.dupeZ(u8, rt.config.default_parent_account),
         };
         try user.assignAccount();
         try entries.append(rt.allocator, user);

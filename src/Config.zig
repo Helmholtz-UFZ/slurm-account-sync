@@ -27,6 +27,7 @@ const Config = @This();
 cluster: []const u8,
 ignore_users_on_delete: []const []const u8 = &.{},
 organizations: []const []const u8 = &.{},
+default_parent_account: []const u8 = "root",
 group_remap: struct {
     primary_only: []const []const u8 = &.{},
     all: []const []const u8 = &.{},
