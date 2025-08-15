@@ -13,11 +13,12 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
-    try slurm.setupSlurmPath(b, exe, null);
+    slurm.setupSlurmPath(b, exe);
 
     const slurm_dep = b.dependency("slurm", .{
         .target = target,
         .optimize = optimize,
+        .@"use-slurmfull" = true,
     });
 
     const yazap_dep = b.dependency("yazap", .{});
