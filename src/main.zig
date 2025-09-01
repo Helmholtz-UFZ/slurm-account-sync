@@ -42,10 +42,12 @@ pub const Runtime = struct {
     mail_message: std.ArrayListUnmanaged(u8) = .empty,
     change_attempted: bool = false,
     cluster: [:0]const u8 = undefined,
+    tres: []const *slurm.db.TrackableResource = &.{},
 
     private: struct {
         slurm_accounts_list: *slurm.db.List(*slurm.db.Account) = undefined,
         slurm_users_list: *slurm.db.List(*slurm.db.User) = undefined,
+        slurm_tres_list: *slurm.db.List(*slurm.db.TrackableResource) = undefined,
     } = .{},
 
     pub fn init(allocator: std.mem.Allocator) !void {
@@ -88,11 +90,15 @@ pub const Runtime = struct {
             },
         });
         rt.slurm_accounts = try rt.private.slurm_accounts_list.constSlice(rt.allocator);
+
+        rt.private.slurm_tres_list = try slurm.db.tres.load(rt.db_conn, .{});
+        rt.tres = try rt.private.slurm_tres_list.constSlice(rt.allocator);
     }
 
     pub fn deinit(self: *Runtime) void {
         self.private.slurm_users_list.deinit();
         self.private.slurm_accounts_list.deinit();
+        self.private.slurm_tres_list.deinit();
         self.db_conn.close();
         slurm.deinit();
     }
@@ -113,7 +119,10 @@ pub fn main() !void {
     if (rt.config.limits) |limits| {
         log.info(
             "Current Limits:\n{s}",
-            .{std.json.fmt(limits, .{ .whitespace = .indent_4 })},
+            .{std.json.fmt(limits, .{
+                .whitespace = .indent_4,
+                .emit_null_optional_fields = false,
+            })},
         );
     }
 

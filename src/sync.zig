@@ -276,15 +276,57 @@ fn deleteAccount(account: [:0]const u8) void {
     rt.change_attempted = true;
 }
 
-fn tresListToKeyValue(list: []const []const u8) !?[*:0]const u8 {
+fn parseTresList(list: ?[]const []const u8) ?[*:0]const u8 {
+    if (list == null) return null;
+
     var str: std.ArrayListUnmanaged(u8) = .empty;
 
-    for (list) |item| {
-        // TODO: fetch TRES and convert string tres to its ID
-        try str.appendSlice(rt.allocator, item);
+    for (list.?) |item| {
+        var it = std.mem.splitScalar(u8, item, '=');
+        const spec = it.first();
+        const value = it.rest();
+
+        var id: ?u32 = null;
+        for (rt.tres) |tres| {
+            const tres_type = slurm.parseCStrZ(tres.type);
+            if (tres_type == null or tres.id <= 0) continue;
+
+            const tres_name = slurm.parseCStrZ(tres.name);
+            const tres_full = if (tres_name) |name|
+                std.fmt.allocPrint(
+                    rt.allocator,
+                    "{s}/{s}",
+                    .{ tres_type.?, name },
+                ) catch return null
+            else
+                tres_type.?;
+
+            if (std.mem.eql(u8, tres_full, spec)) {
+                id = tres.id;
+                break;
+            }
+        }
+
+        if (id == null) {
+            log.warn(
+                "TRES {s} does not seem to exist on this Cluster, ignoring...",
+                .{spec},
+            );
+            continue;
+        }
+
+        const sep = if (str.items.len > 0) "," else "";
+        const item_formatted = std.fmt.allocPrint(
+            rt.allocator,
+            "{s}{d}={s}",
+            .{ sep, id.?, value },
+        ) catch return null;
+        str.appendSlice(rt.allocator, item_formatted) catch return null;
     }
 
-    const slice = try str.toOwnedSliceSentinel(rt.allocator, 0);
+    if (str.items.len == 0) return null;
+
+    const slice = str.toOwnedSliceSentinel(rt.allocator, 0) catch return null;
     return slice.ptr;
 }
 
@@ -301,8 +343,27 @@ fn addAssociation(assoc: *Association) void {
             assoc.is_def = 1;
             assoc.shares_raw = limits.shares orelse NoValue.u32;
             assoc.max_submit_jobs = limits.max_submit_jobs orelse NoValue.u32;
-            assoc.grp_tres_run_mins = tresListToKeyValue(limits.grp_tres_run_mins) catch null;
-            assoc.grp_tres = tresListToKeyValue(limits.grp_tres) catch null;
+            assoc.grp_submit_jobs = limits.grp_submit_jobs orelse NoValue.u32;
+            assoc.grp_tres_run_mins = parseTresList(limits.grp_tres_run_mins);
+            assoc.grp_tres_mins = parseTresList(limits.grp_tres_mins);
+            assoc.grp_tres = parseTresList(limits.grp_tres);
+            assoc.max_tres_pj = parseTresList(limits.max_tres_per_job);
+            assoc.max_tres_pn = parseTresList(limits.max_tres_per_node);
+            assoc.max_tres_mins_pj = parseTresList(limits.max_tres_mins_per_job);
+            assoc.max_tres_run_mins = parseTresList(limits.max_tres_run_mins);
+            assoc.grp_jobs = limits.grp_jobs orelse NoValue.u32;
+            assoc.max_jobs = limits.max_jobs orelse NoValue.u32;
+            assoc.max_jobs_accrue = limits.max_jobs_accrue orelse NoValue.u32;
+            assoc.grp_jobs_accrue = limits.grp_jobs_accrue orelse NoValue.u32;
+
+            //          log.debug(
+            //              "  GrpTRESRunMins raw value: {?s} ({s})",
+            //              .{ assoc.grp_tres_run_mins, limits.grp_tres_run_mins },
+            //          );
+            //          log.debug(
+            //              "  GrpTRES raw value: {?s} ({s})",
+            //              .{ assoc.grp_tres, limits.grp_tres },
+            //          );
         }
     }
 

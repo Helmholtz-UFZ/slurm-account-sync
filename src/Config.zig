@@ -40,8 +40,20 @@ uid_range: struct {
 limits: ?struct {
     shares: ?u32 = null,
     max_submit_jobs: ?u32 = null,
-    grp_tres_run_mins: []const []const u8 = &.{},
-    grp_tres: []const []const u8 = &.{},
+    grp_submit_jobs: ?u32 = null,
+    grp_tres_run_mins: ?[]const []const u8 = null,
+    grp_tres_mins: ?[]const []const u8 = null,
+    grp_tres: ?[]const []const u8 = null,
+    max_tres_per_job: ?[]const []const u8 = null,
+    max_tres_per_node: ?[]const []const u8 = null,
+    max_tres_mins_per_job: ?[]const []const u8 = null,
+    max_tres_run_mins: ?[]const []const u8 = null,
+    grp_jobs: ?u32 = null,
+    max_jobs: ?u32 = null,
+    grp_wall: ?[]const u8 = null, // transform to minutes
+    max_wall: ?[]const u8 = null, // transform to minutes, max_wall_pj
+    max_jobs_accrue: ?u32 = null,
+    grp_jobs_accrue: ?u32 = null,
 } = .{},
 mail_options: ?struct {
     from: ?[]const u8 = null,
