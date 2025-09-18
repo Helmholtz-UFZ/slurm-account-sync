@@ -81,7 +81,7 @@ fn accountInUse(account_name: [:0]const u8, assocs: *SlurmList(*Association)) bo
     defer assoc_iter.deinit();
 
     while (assoc_iter.next()) |assoc| {
-        if (slurm.parseCStrZ(assoc.account)) |assoc_account| {
+        if (slurm.parseCStrZ(assoc.acct)) |assoc_account| {
             if (assoc.user == null) continue;
             if (std.mem.eql(u8, assoc_account, account_name)) return true;
         }
@@ -128,7 +128,7 @@ fn addOrModifyUsers() void {
 
 fn modifyUser(local_user: *passwd.User, slurm_user: *User) void {
     // User exists, check for changes
-    const def_acct = slurm.parseCStrZ(slurm_user.default_account);
+    const def_acct = slurm.parseCStrZ(slurm_user.default_acct);
     if (def_acct == null) return;
 
     if (!std.mem.eql(u8, local_user.account, def_acct.?)) {
@@ -153,7 +153,7 @@ fn deleteEmptyAccounts() void {
             if (std.mem.eql(u8, org, name.?)) continue :skipOrgDeletion;
         }
 
-        if (!accountInUse(name.?, assocs) or account.associations == null) {
+        if (!accountInUse(name.?, assocs) or account.assoc_list == null) {
             deleteAccount(name.?);
         }
     }
@@ -185,17 +185,17 @@ fn deleteOldUserAssociations() void {
 
     log.info("Deleting unused Associations...", .{});
     while (assoc_iter.next()) |assoc| {
-        const account = slurm.parseCStrZ(assoc.account);
+        const account = slurm.parseCStrZ(assoc.acct);
         const user = slurm.parseCStrZ(assoc.user);
 
         if (account == null or user == null) continue;
         if (assoc.is_def != NoValue.u16 and assoc.is_def > 0) continue;
 
         var filter: Association.Filter = .{
-            .accounts = slurm.db.list.fromCStr(&[_][:0]const u8{
+            .acct_list = slurm.db.list.fromCStr(&[_][:0]const u8{
                 account.?,
             }),
-            .users = slurm.db.list.fromCStr(&[_][:0]const u8{
+            .user_list = slurm.db.list.fromCStr(&[_][:0]const u8{
                 user.?,
             }),
         };
@@ -242,7 +242,7 @@ fn addAccount(name: [:0]const u8, parent: [:0]const u8) void {
     };
 
     var assoc: Association = .{
-        .account = name,
+        .acct = name,
         .parent_acct = parent,
     };
     addAssociation(&assoc);
@@ -250,11 +250,11 @@ fn addAccount(name: [:0]const u8, parent: [:0]const u8) void {
 
 fn deleteAccount(account: [:0]const u8) void {
     var assoc_filter: Association.Filter = .{
-        .accounts = slurm.db.list.fromCStr(&[_][:0]const u8{account}),
+        .acct_list = slurm.db.list.fromCStr(&[_][:0]const u8{account}),
     };
 
     var filter: Account.Filter = .{
-        .association_filter = &assoc_filter,
+        .assoc_cond = &assoc_filter,
     };
 
     _ = slurm.db.account.removeRaw(rt.db_conn, &filter);
@@ -372,7 +372,7 @@ fn addAssociation(assoc: *Association) void {
     const assoc_fmt = "User={?s} Account={?s} ({?s})";
     const print_args = .{
         if (is_user_assoc) assoc.user else "N/A",
-        assoc.account,
+        assoc.acct,
         assoc.parent_acct,
     };
 
@@ -394,7 +394,7 @@ fn addUser(user: *passwd.User) void {
 
     var slurm_user: User = .{
         .name = user.name,
-        .default_account = user.account,
+        .default_acct = user.account,
     };
 
     user_list.append(&slurm_user);
@@ -407,13 +407,14 @@ fn addUser(user: *passwd.User) void {
 
 fn deleteUser(user: [:0]const u8) void {
     var assoc_filter: Association.Filter = .{
-        .users = slurm.db.list.fromCStr(&[_][:0]const u8{user}),
+        .user_list = slurm.db.list.fromCStr(&[_][:0]const u8{user}),
     };
 
     var filter: User.Filter = .{ .association_filter = &assoc_filter };
 
     _ = slurm.db.user.removeRaw(rt.db_conn, &filter);
     const err_context = slurm.err.getErrorBundle();
+    const filter: User.Filter = .{ .assoc_cond = &assoc_filter };
 
     checkRpc(err_context.code) catch |err| {
         log.err("Cannot delete User: {s}", .{user});
@@ -434,7 +435,7 @@ fn deleteUser(user: [:0]const u8) void {
 fn addUserAssociation(user: *passwd.User) void {
     var assoc: Association = .{
         .user = user.name,
-        .account = user.account,
+        .acct = user.account,
         .parent_acct = user.parent_account,
     };
     addAssociation(&assoc);
