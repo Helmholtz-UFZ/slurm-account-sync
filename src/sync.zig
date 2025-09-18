@@ -26,7 +26,6 @@ const SlurmList = slurm.db.List;
 const Account = slurm.db.Account;
 const Association = slurm.db.Association;
 const User = slurm.db.User;
-const checkRpc = slurm.err.checkRpc;
 const NoValue = slurm.common.NoValue;
 const uid_t = std.posix.uid_t;
 
@@ -191,7 +190,7 @@ fn deleteOldUserAssociations() void {
         if (account == null or user == null) continue;
         if (assoc.is_def != NoValue.u16 and assoc.is_def > 0) continue;
 
-        var filter: Association.Filter = .{
+        const filter: Association.Filter = .{
             .acct_list = slurm.db.list.fromCStr(&[_][:0]const u8{
                 account.?,
             }),
@@ -200,24 +199,25 @@ fn deleteOldUserAssociations() void {
             }),
         };
 
-        _ = slurm.db.association.removeRaw(rt.db_conn, &filter);
-        const err_context = slurm.err.getErrorBundle();
-
         const assoc_fmt = "User={?s} Account={?s}";
         const print_args = .{
             user,
             account,
         };
-        checkRpc(err_context.code) catch |err| switch (err) {
-            error.JobsRunningOnAssoc => {
-                log.err(" " ++ assoc_fmt ++ " still has jobs running, trying again later...", print_args);
-                continue;
-            },
-            else => {
-                log.err("Failed to delete Association: " ++ assoc_fmt, print_args);
-                log.err("The error was: {s}", .{err_context.description});
-                continue;
-            },
+
+        _ = slurm.db.association.remove(rt.db_conn, filter) catch |err| {
+            const err_entry = slurm.err.toEntry(err);
+            switch (err) {
+                error.JobsRunningOnAssoc => {
+                    log.err(" " ++ assoc_fmt ++ " still has jobs running, trying again later...", print_args);
+                    continue;
+                },
+                else => {
+                    log.err("Failed to delete Association: " ++ assoc_fmt, print_args);
+                    log.err("The error was: {s}", .{err_entry.description});
+                    continue;
+                },
+            }
         };
 
         log.info("  " ++ assoc_fmt, print_args);
@@ -253,20 +253,18 @@ fn deleteAccount(account: [:0]const u8) void {
         .acct_list = slurm.db.list.fromCStr(&[_][:0]const u8{account}),
     };
 
-    var filter: Account.Filter = .{
+    const filter: Account.Filter = .{
         .assoc_cond = &assoc_filter,
     };
 
-    _ = slurm.db.account.removeRaw(rt.db_conn, &filter);
-    const err_context = slurm.err.getErrorBundle();
-
-    checkRpc(err_context.code) catch |err| {
+    _ = slurm.db.account.remove(rt.db_conn, filter) catch |err| {
+        const err_entry = slurm.err.toEntry(err);
         log.err("Cannot delete Account: {s}", .{account});
         log.err("The error was: ", .{});
         log.err("{s}({d}): {s}", .{
-            @errorName(err),
-            err_context.code,
-            err_context.description,
+            err_entry.name,
+            err_entry.code,
+            err_entry.description,
         });
         return;
     };
@@ -410,19 +408,16 @@ fn deleteUser(user: [:0]const u8) void {
         .user_list = slurm.db.list.fromCStr(&[_][:0]const u8{user}),
     };
 
-    var filter: User.Filter = .{ .association_filter = &assoc_filter };
-
-    _ = slurm.db.user.removeRaw(rt.db_conn, &filter);
-    const err_context = slurm.err.getErrorBundle();
     const filter: User.Filter = .{ .assoc_cond = &assoc_filter };
 
-    checkRpc(err_context.code) catch |err| {
+    _ = slurm.db.user.remove(rt.db_conn, filter) catch |err| {
+        const err_entry = slurm.err.toEntry(err);
         log.err("Cannot delete User: {s}", .{user});
         log.err("The error was: ", .{});
         log.err("{s}({d}): {s}", .{
-            @errorName(err),
-            err_context.code,
-            err_context.description,
+            err_entry.name,
+            err_entry.code,
+            err_entry.description,
         });
         return;
     };
