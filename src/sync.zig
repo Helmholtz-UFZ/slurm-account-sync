@@ -132,6 +132,7 @@ fn modifyUser(local_user: *passwd.User, slurm_user: *User) void {
 
     if (!std.mem.eql(u8, local_user.account, def_acct.?)) {
         // department doesn't match, add new assoc
+        // TODO: Check first if the account already exists.
         addAccount(local_user.account, local_user.parent_account);
         addUserAssociation(local_user);
     }
@@ -210,6 +211,9 @@ fn deleteOldUserAssociations() void {
             switch (err) {
                 error.JobsRunningOnAssoc => {
                     log.err(" " ++ assoc_fmt ++ " still has jobs running, trying again later...", print_args);
+                    // TODO: Might need a rollback here, because the slurmdbd
+                    // will happily delete it anyway if the client happens to
+                    // commit.
                     continue;
                 },
                 else => {
